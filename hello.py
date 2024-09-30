@@ -10,7 +10,9 @@ def verificar_acceso(usuario, contraseña):
     """
     USUARIOS_VALIDOS = {
         "personal1": "personalcontra",
-        "especialista1": "especialistacontra"
+        "especialista1": "especialistacontra",
+        "flavio": "avendano",
+        "axel" : "balboa"
     }
     return USUARIOS_VALIDOS.get(usuario) == contraseña
 

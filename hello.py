@@ -10,9 +10,7 @@ def verificar_acceso(usuario, contraseña):
     """
     USUARIOS_VALIDOS = {
         "personal1": "personalcontra",
-        "especialista1": "especialistacontra",
-        "flavio": "avendano",
-        "axel" : "balboa"
+        "especialista1": "especialistacontra"
     }
     return USUARIOS_VALIDOS.get(usuario) == contraseña
 
@@ -24,7 +22,9 @@ def conectar_db():
 # Crear una tabla para almacenar la información de los pacientes y sus imágenes
 def crear_tabla():
     conn = conectar_db()
-    conn.execute('''
+    cursor = conn.cursor()
+    # Crear la tabla si no existe
+    cursor.execute('''
     CREATE TABLE IF NOT EXISTS pacientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nombre TEXT,
@@ -32,26 +32,34 @@ def crear_tabla():
         sexo TEXT,
         sintomas_previos TEXT,
         foto_ojo_derecho BLOB,
-        foto_ojo_izquierdo BLOB
+        foto_ojo_izquierdo BLOB,
+        reporte TEXT
     )
     ''')
+    # Verificar si la columna 'reporte' existe; agregarla si falta
+    cursor.execute("PRAGMA table_info(pacientes)")
+    columnas = [columna[1] for columna in cursor.fetchall()]
+    if 'reporte' not in columnas:
+        cursor.execute("ALTER TABLE pacientes ADD COLUMN reporte TEXT")
+
+    conn.commit()
     conn.close()
 
 # Insertar o actualizar la información de un paciente en la base de datos
-def guardar_datos_paciente(nombre, edad, sexo, sintomas_previos, foto_ojo_derecho, foto_ojo_izquierdo, id_paciente=None):
+def guardar_datos_paciente(nombre, edad, sexo, sintomas_previos, foto_ojo_derecho, foto_ojo_izquierdo, reporte, id_paciente=None):
     conn = conectar_db()
     cursor = conn.cursor()
     if id_paciente:  # Si ya existe el paciente, actualizar
         cursor.execute('''
         UPDATE pacientes
-        SET nombre=?, edad=?, sexo=?, sintomas_previos=?, foto_ojo_derecho=?, foto_ojo_izquierdo=?
+        SET nombre=?, edad=?, sexo=?, sintomas_previos=?, foto_ojo_derecho=?, foto_ojo_izquierdo=?, reporte=?
         WHERE id=?
-        ''', (nombre, edad, sexo, sintomas_previos, foto_ojo_derecho, foto_ojo_izquierdo, id_paciente))
+        ''', (nombre, edad, sexo, sintomas_previos, foto_ojo_derecho, foto_ojo_izquierdo, reporte, id_paciente))
     else:  # Si no existe, insertar un nuevo paciente
         cursor.execute('''
-        INSERT INTO pacientes (nombre, edad, sexo, sintomas_previos, foto_ojo_derecho, foto_ojo_izquierdo)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ''', (nombre, edad, sexo, sintomas_previos, foto_ojo_derecho, foto_ojo_izquierdo))
+        INSERT INTO pacientes (nombre, edad, sexo, sintomas_previos, foto_ojo_derecho, foto_ojo_izquierdo, reporte)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (nombre, edad, sexo, sintomas_previos, foto_ojo_derecho, foto_ojo_izquierdo, reporte))
     conn.commit()
     conn.close()
 
@@ -123,7 +131,7 @@ else:
         st.warning("No hay pacientes cargados.")
     else:
         for i, paciente in enumerate(pacientes_db):
-            id_paciente, nombre, edad, sexo, sintomas_previos, _, _ = paciente
+            id_paciente, nombre, edad, sexo, sintomas_previos, foto_derecho, foto_izquierdo, reporte = paciente
             col1, col2, col3 = st.columns([5, 1, 1])
             with col1:
                 if st.button(f"Paciente {i+1} ({nombre})", key=f"btn_paciente_{id_paciente}"):
@@ -134,23 +142,24 @@ else:
                     eliminar_paciente(id_paciente)
                     st.experimental_rerun()  # Recargar la página para ver los cambios
 
-    # Formulario para agregar un nuevo paciente
-    st.markdown("<h3 style='color: #4B8BBE;'>Agregar nuevo paciente:</h3>", unsafe_allow_html=True)
-    with st.form("form_agregar_paciente"):
-        nuevo_nombre = st.text_input("Nombre y Apellidos", key="nuevo_nombre")
-        nueva_edad = st.text_input("Edad", key="nueva_edad")
-        nuevo_sexo = st.text_input("Sexo", key="nuevo_sexo")
-        nuevo_sintomas = st.text_area("Síntomas previos", key="nuevo_sintomas")
-        submit_nuevo_paciente = st.form_submit_button("Agregar Paciente")
+    # Formulario colapsado para agregar un nuevo paciente
+    with st.expander("Agregar nuevo paciente"):
+        st.markdown("<h3 style='color: #4B8BBE;'>Ingrese los datos del nuevo paciente:</h3>", unsafe_allow_html=True)
+        with st.form("form_agregar_paciente"):
+            nuevo_nombre = st.text_input("Nombre y Apellidos", key="nuevo_nombre")
+            nueva_edad = st.text_input("Edad", key="nueva_edad")
+            nuevo_sexo = st.selectbox("Sexo", options=["Masculino", "Femenino"], key="nuevo_sexo")
+            nuevo_sintomas = st.text_area("Síntomas previos", key="nuevo_sintomas")
+            submit_nuevo_paciente = st.form_submit_button("Agregar Paciente")
 
-    # Guardar el nuevo paciente en la base de datos
-    if submit_nuevo_paciente:
-        if not (nuevo_nombre and nueva_edad and nuevo_sexo):
-            st.error("Nombre, Edad y Sexo son obligatorios.")
-        else:
-            guardar_datos_paciente(nuevo_nombre, nueva_edad, nuevo_sexo, nuevo_sintomas, None, None)
-            st.success("Paciente agregado correctamente.")
-            st.experimental_rerun()  # Recargar la página para ver el nuevo paciente
+        # Guardar el nuevo paciente en la base de datos
+        if submit_nuevo_paciente:
+            if not (nuevo_nombre and nueva_edad and nuevo_sexo):
+                st.error("Nombre, Edad y Sexo son obligatorios.")
+            else:
+                guardar_datos_paciente(nuevo_nombre, nueva_edad, nuevo_sexo, nuevo_sintomas, None, None, "")
+                st.success("Paciente agregado correctamente.")
+                st.experimental_rerun()  # Recargar la página para ver el nuevo paciente
 
     # Si un paciente es seleccionado, mostrar las opciones de Historial Médico o Reporte
     if st.session_state.paciente_seleccionado:
@@ -163,9 +172,8 @@ else:
             with st.form("form_historial"):
                 nombre = st.text_input("Nombre y Apellidos", key="nombre", value=paciente[1])
                 edad = st.text_input("Edad", key="edad", value=paciente[2])
-                sexo = st.text_input("Sexo", key="sexo", value=paciente[3])
+                sexo = st.selectbox("Sexo", options=["Masculino", "Femenino"], key="sexo", index=0 if paciente[3] == "Masculino" else 1)
                 sintomas_previos = st.text_area("Síntomas previos", key="sintomas_previos", value=paciente[4])
-                camara = st.camera_input(" Tomar foto")
 
                 # Campos para adjuntar fotos de los ojos
                 foto_ojo_derecho = st.file_uploader("Foto ojo derecho", type=["png", "jpg", "jpeg"], key="foto_derecho")
@@ -184,16 +192,29 @@ else:
 
             # Verificar si los campos obligatorios están completos y guardarlos en la base de datos
             if submit_historial:
-                if not (nombre and edad and sexo):
+                if not (nombre, edad, sexo):
                     st.error("Nombre, Edad y Sexo son obligatorios.")
                 else:
                     # Convertir imágenes a binario y guardarlas en la base de datos
                     binario_ojo_derecho = convertir_a_binario(foto_ojo_derecho)
                     binario_ojo_izquierdo = convertir_a_binario(foto_ojo_izquierdo)
 
-                    guardar_datos_paciente(nombre, edad, sexo, sintomas_previos, binario_ojo_derecho, binario_ojo_izquierdo, id_paciente=paciente[0])
+                    guardar_datos_paciente(nombre, edad, sexo, sintomas_previos, binario_ojo_derecho, binario_ojo_izquierdo, paciente[7], id_paciente=paciente[0])
                     st.success("Historial médico guardado correctamente.")
                     st.experimental_rerun()  # Refrescar para ver cambios
+
+        elif seleccion == "Reporte":
+            # Mostrar y editar el reporte del paciente
+            st.markdown("<h3 style='color: #306998;'>Reporte del paciente</h3>", unsafe_allow_html=True)
+            with st.form("form_reporte"):
+                reporte = st.text_area("Escribe el reporte aquí:", value=paciente[7] if paciente[7] else "", height=200)
+                submit_reporte = st.form_submit_button("Guardar Reporte")
+
+            if submit_reporte:
+                # Guardar el reporte en la base de datos
+                guardar_datos_paciente(paciente[1], paciente[2], paciente[3], paciente[4], paciente[5], paciente[6], reporte, id_paciente=paciente[0])
+                st.success("Reporte guardado correctamente.")
+                st.experimental_rerun()
 
     # Botón para cerrar sesión
     if st.button("Cerrar sesión", key="cerrar_sesion"):
